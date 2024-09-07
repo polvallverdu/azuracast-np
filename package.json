@@ -1,0 +1,54 @@
+{
+  "name": "@undergr.network/azuracast-np",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "A simple package to get the now playing song on an AzuraCast station",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./websocket": {
+      "import": {
+        "types": "./dist/websocket/index.d.ts",
+        "default": "./dist/websocket/index.js"
+      },
+      "require": {
+        "types": "./dist/websocket/index.d.cts",
+        "default": "./dist/websocket/index.cjs"
+      }
+    },
+    "./static": {
+      "import": {
+        "types": "./dist/static/index.d.ts",
+        "default": "./dist/static/index.js"
+      },
+      "require": {
+        "types": "./dist/static/index.d.cts",
+        "default": "./dist/static/index.cjs"
+      }
+    }
+  },
+  "scripts": {
+    "build": "bunchee --tsconfig tsconfig.json",
+    "dev": "bunchee -w --tsconfig tsconfig.json --no-clean"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.8",
+    "@types/bun": "latest",
+    "bunchee": "^5.4.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
