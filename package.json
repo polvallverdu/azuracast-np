@@ -1,7 +1,7 @@
 {
   "name": "azuracast-np",
   "type": "module",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A simple package to get the now playing song on an AzuraCast station",
   "license": "MIT",
   "repository": {
