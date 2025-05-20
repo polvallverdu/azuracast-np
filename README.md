@@ -13,7 +13,7 @@ A simple package to get the now playing song on an AzuraCast station, with runti
 ## Installation
 
 ```
-bun add @undergr.network/azuracast-np
+bun add azuracast-np
 ```
 
 ## Usage
@@ -69,10 +69,10 @@ ws.on("error", (err) => {
 
 ## Testing
 
-This project uses [Bun](https://bun.sh/) for testing. To run tests:
+This project uses vitest for testing. To run tests:
 
 ```
-bun test
+bun run test
 ```
 
 ## License
