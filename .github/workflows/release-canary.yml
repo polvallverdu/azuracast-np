@@ -20,6 +20,11 @@ jobs:
       - name: Setup
         uses: ./.github/setup
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
       - name: Build And Check Package
         run: bun run build
 
