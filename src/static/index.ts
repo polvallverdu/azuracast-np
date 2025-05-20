@@ -1,139 +1,66 @@
-export type NowPlayingStatic = {
-  station: {
-    id: number;
-    name: string;
-    shortcode: string;
-    description: string;
-    frontend: string;
-    backend: string;
-    timezone: string;
-    listen_url: string;
-    url: string;
-    public_player_url: string;
-    playlist_pls_url: string;
-    playlist_m3u_url: string;
-    is_public: boolean;
-    mounts: Array<{
-      id: number;
-      name: string;
-      url: string;
-      bitrate: number;
-      format: string;
-      listeners: {
-        total: number;
-        unique: number;
-        current: number;
-      };
-      path: string;
-      is_default: boolean;
-    }>;
-    remotes: any[];
-    hls_enabled: boolean;
-    hls_is_default: boolean;
-    hls_url: string | null;
-    hls_listeners: number;
-  };
-  listeners: {
-    total: number;
-    unique: number;
-    current: number;
-  };
-  live: {
-    is_live: boolean;
-    streamer_name: string;
-    broadcast_start: string | null;
-    art: string | null;
-  };
-  now_playing: {
-    sh_id: number;
-    played_at: number;
-    duration: number;
-    playlist: string;
-    streamer: string;
-    is_request: boolean;
-    song: {
-      id: string;
-      art: string;
-      custom_fields: {
-        sc_url: string | null;
-        uploader: string | null;
-        uploader_url: string | null;
-      };
-      text: string;
-      artist: string;
-      title: string;
-      album: string;
-      genre: string;
-      isrc: string;
-      lyrics: string;
-    };
-    elapsed: number;
-    remaining: number;
-  };
-  playing_next: {
-    cued_at: number;
-    played_at: number;
-    duration: number;
-    playlist: string;
-    is_request: boolean;
-    song: {
-      id: string;
-      art: string;
-      custom_fields: {
-        sc_url: string | null;
-        uploader: string | null;
-        uploader_url: string | null;
-      };
-      text: string;
-      artist: string;
-      title: string;
-      album: string;
-      genre: string;
-      isrc: string;
-      lyrics: string;
-    };
-  };
-  song_history: Array<{
-    sh_id: number;
-    played_at: number;
-    duration: number;
-    playlist: string;
-    streamer: string;
-    is_request: boolean;
-    song: {
-      id: string;
-      art: string;
-      custom_fields: {
-        sc_url: string | null;
-        uploader: string | null;
-        uploader_url: string | null;
-      };
-      text: string;
-      artist: string;
-      title: string;
-      album: string;
-      genre: string;
-      isrc: string;
-      lyrics: string;
-    };
-  }>;
-  is_online: boolean;
-  cache: string;
-};
+import { z } from "zod";
+import { NowPlayingPayloadSchema, type NowPlayingPayload } from "../schema";
 
 /**
- * @param host The host of the websocket server. Skip the protocol and the path. (for example, instead of "https://example.com/socket", use "example.com")
+ * Custom error for network issues when fetching Now Playing data.
  */
-export async function getNowPlaying(host: string, radioId: string) {
-  const url = `https://${host}/api/nowplaying_static/${radioId}.json`;
-
-  const req = await fetch(url);
-
-  if (!req.ok) {
-    throw new Error(`Failed to fetch now playing data: ${req.statusText}`);
+export class NowPlayingNetworkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NowPlayingNetworkError";
   }
+}
 
-  const data = await req.json();
+/**
+ * Custom error for invalid data returned from the Now Playing endpoint.
+ */
+export class NowPlayingValidationError extends Error {
+  issues: z.ZodIssue[];
+  constructor(message: string, issues: z.ZodIssue[]) {
+    super(message);
+    this.name = "NowPlayingValidationError";
+    this.issues = issues;
+  }
+}
 
-  return data as NowPlayingStatic;
+/**
+ * Fetches the static Now Playing data for a given AzuraCast station and validates it.
+ * @param host The host of the AzuraCast server (without protocol or path).
+ * @param radioId The station shortcode or numeric ID.
+ * @returns The validated NowPlayingStatic object.
+ * @throws {NowPlayingNetworkError} If the network request fails.
+ * @throws {NowPlayingValidationError} If the data is invalid.
+ * @example
+ *   const np = await getNowPlaying('demo.azuracast.com', 'azuratest_radio');
+ */
+export async function getNowPlaying(
+  host: string,
+  radioId: string
+): Promise<NowPlayingPayload> {
+  const url = `https://${host}/api/nowplaying_static/${radioId}.json`;
+  let req: Response;
+  try {
+    req = await fetch(url);
+  } catch (err: any) {
+    throw new NowPlayingNetworkError(`Network error: ${err?.message || err}`);
+  }
+  if (!req.ok) {
+    throw new NowPlayingNetworkError(
+      `Failed to fetch now playing data: ${req.status} ${req.statusText}`
+    );
+  }
+  let data: unknown;
+  try {
+    data = await req.json();
+  } catch (err: any) {
+    throw new NowPlayingValidationError("Response was not valid JSON", []);
+  }
+  const parsed = NowPlayingPayloadSchema.safeParse(data);
+  if (!parsed.success) {
+    throw new NowPlayingValidationError(
+      "Invalid now playing data structure",
+      parsed.error.issues
+    );
+  }
+  return parsed.data;
 }

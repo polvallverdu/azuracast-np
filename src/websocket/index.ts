@@ -1,37 +1,61 @@
 import { EventEmitter } from "events";
+import { z } from "zod";
+import WebSocket from "isomorphic-ws";
+import { NowPlayingPayloadSchema, type NowPlayingPayload } from "../schema";
 
-type NowPlayingWebsocketEvent = "nowPlayingUpdate";
+/**
+ * Custom error for websocket connection issues.
+ */
+export class NowPlayingWebsocketConnectionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NowPlayingWebsocketConnectionError";
+  }
+}
 
-export type NowPlayingUpdateData = {
-  listeners: number;
-  stationId: string;
-  station: string;
+/**
+ * Custom error for invalid data received from the websocket.
+ */
+export class NowPlayingWebsocketValidationError extends Error {
+  issues: z.ZodIssue[];
+  constructor(message: string, issues: z.ZodIssue[]) {
+    super(message);
+    this.name = "NowPlayingWebsocketValidationError";
+    this.issues = issues;
+  }
+}
 
-  title: string;
-  artist: string;
-  art: string;
-  playlist?: string;
-  custom_fields?: Record<string, string>;
-
-  duration?: number;
-  elapsed?: number;
-  remaining?: number;
+type EventMap = {
+  nowPlayingUpdate: [NowPlayingPayload];
+  error: [
+    NowPlayingWebsocketConnectionError | NowPlayingWebsocketValidationError
+  ];
 };
 
-export class NowPlayingWebsocket {
-  private eventEmitter: EventEmitter;
+/**
+ * A class for subscribing to AzuraCast Now Playing websocket updates.
+ *
+ * @example
+ *   const ws = new NowPlayingWebsocket('demo.azuracast.com', 'azuratest_radio');
+ *   ws.on('nowPlayingUpdate', (data) => { ... });
+ *   ws.on('error', (err) => { ... });
+ *   // ...
+ *   ws.close();
+ */
+export class NowPlayingWebsocket extends EventEmitter<EventMap> {
   private url: string;
   private websocket: WebSocket | null = null;
   private radioToListen?: string;
+  private closed = false;
 
   /**
    * @param host The host of the websocket server. Skip the protocol and the path. (for example, instead of "https://example.com/socket", use "example.com")
+   * @param radioToListen The station shortcode to subscribe to.
    */
   constructor(host: string, radioToListen?: string) {
-    this.eventEmitter = new EventEmitter();
+    super();
     this.url = `wss://${host}/api/live/nowplaying/websocket`;
     this.radioToListen = radioToListen;
-
     this.start();
   }
 
@@ -51,78 +75,79 @@ export class NowPlayingWebsocket {
     };
 
     this.websocket.onmessage = (event) => {
-      const jsonData = JSON.parse(event.data);
-
-      if ("connect" in jsonData) {
-        const connectData = jsonData.connect;
-
-        if ("data" in connectData) {
-          // Legacy SSE data
-          connectData.data.forEach((initialRow: any) =>
-            this.handleSseData(initialRow)
-          );
-        } else {
-          // New Centrifugo time format
-          // if ('time' in connectData) {
-          //   currentTime = Math.floor(connectData.time / 1000);
-          // }
-
-          // New Centrifugo cached NowPlaying initial push.
-          for (const subName in connectData.subs) {
-            const sub = connectData.subs[subName];
-            if ("publications" in sub && sub.publications.length > 0) {
-              sub.publications.forEach((initialRow: any) =>
-                this.handleSseData(initialRow, false)
-              );
+      try {
+        const jsonData = JSON.parse(event.data as string);
+        if ("connect" in jsonData) {
+          const connectData = jsonData.connect;
+          if ("data" in connectData) {
+            connectData.data.forEach((initialRow: any) =>
+              this.handleSseData(initialRow)
+            );
+          } else {
+            for (const subName in connectData.subs) {
+              const sub = connectData.subs[subName];
+              if ("publications" in sub && sub.publications.length > 0) {
+                sub.publications.forEach((initialRow: any) =>
+                  this.handleSseData(initialRow, false)
+                );
+              }
             }
           }
+        } else if ("pub" in jsonData) {
+          this.handleSseData(jsonData.pub);
         }
-      } else if ("pub" in jsonData) {
-        this.handleSseData(jsonData.pub);
+      } catch (err: any) {
+        this.emit(
+          "error",
+          new NowPlayingWebsocketValidationError(
+            "Invalid JSON or structure in websocket message",
+            []
+          )
+        );
       }
     };
 
     this.websocket.onclose = () => {
-      setTimeout(() => this.start(), 500);
+      if (!this.closed) {
+        setTimeout(() => this.start(), 500);
+      }
     };
 
     this.websocket.onerror = (error) => {
-      console.error("Websocket error:", error);
+      this.emit(
+        "error",
+        new NowPlayingWebsocketConnectionError(
+          "Websocket error: " +
+            (error instanceof Error ? error.message : String(error))
+        )
+      );
     };
   }
 
   private handleSseData(ssePayload: any, useTime = true) {
     const jsonData = ssePayload.data;
-
-    // if (useTime && 'current_time' in jsonData) {
-    //   currentTime = jsonData.current_time;
-    // }
-
     const np = jsonData.np;
+    const parsed = NowPlayingPayloadSchema.safeParse(np);
+    if (!parsed.success) {
+      this.emit(
+        "error",
+        new NowPlayingWebsocketValidationError(
+          "Invalid now playing data structure",
+          parsed.error.issues
+        )
+      );
+      return;
+    }
 
-    const updateData = {
-      listeners: np.listeners.total as number,
-      stationId: np.station.shortcode as string,
-      station: np.station.name as string,
-      title: np.now_playing.song.title as string,
-      artist: np.now_playing.song.artist as string,
-      art: np.now_playing.song.art as string,
-      playlist: np.now_playing.playlist as string,
-      custom_fields: np.now_playing.song.custom_fields as Record<
-        string,
-        string
-      >,
-      duration: np.now_playing.duration as number,
-      elapsed: np.now_playing.elapsed as number,
-      remaining: np.now_playing.remaining as number,
-    } satisfies NowPlayingUpdateData;
-
-    this.emit("nowPlayingUpdate", updateData);
+    this.emit("nowPlayingUpdate", parsed.data);
   }
 
+  /**
+   * Change the station being listened to.
+   * @param radioId The new station shortcode.
+   */
   public listenToRadio(radioId: string) {
     this.radioToListen = radioId;
-
     if (this.radioToListen !== undefined && this.websocket) {
       this.websocket.send(
         JSON.stringify({
@@ -134,15 +159,14 @@ export class NowPlayingWebsocket {
     }
   }
 
-  public on(
-    event: NowPlayingWebsocketEvent,
-    // A bit of a hack to make TypeScript happy
-    listener: (...args: any[]) => NowPlayingUpdateData
-  ): void {
-    this.eventEmitter.on(event, listener);
-  }
-
-  private emit(event: NowPlayingWebsocketEvent, ...args: any[]): void {
-    this.eventEmitter.emit(event, ...args);
+  /**
+   * Cleanly close the websocket connection and stop reconnecting.
+   */
+  public close() {
+    this.closed = true;
+    if (this.websocket) {
+      this.websocket.close();
+      this.websocket = null;
+    }
   }
 }
