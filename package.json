@@ -1,9 +1,13 @@
 {
-  "name": "@undergr.network/azuracast-np",
+  "name": "azuracast-np",
   "type": "module",
   "version": "1.0.2",
   "description": "A simple package to get the now playing song on an AzuraCast station",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/polvallverdu/azuracast-np"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
