@@ -22,13 +22,13 @@ bun add azuracast-np
 
 ```ts
 import {
-  getNowPlayingSafe,
+  getNowPlaying,
   NowPlayingNetworkError,
   NowPlayingValidationError,
 } from "@undergr.network/azuracast-np/static";
 
 try {
-  const np = await getNowPlayingSafe("demo.azuracast.com", "azuratest_radio");
+  const np = await getNowPlaying("demo.azuracast.com", "azuratest_radio");
   console.log(np.now_playing.song.title);
 } catch (err) {
   if (err instanceof NowPlayingNetworkError) {
