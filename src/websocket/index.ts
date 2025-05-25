@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import { z } from "zod";
+import type { z } from "zod";
 import WebSocket from "isomorphic-ws";
 import { NowPlayingPayloadSchema, type NowPlayingPayload } from "../schema";
 
@@ -80,23 +80,23 @@ export class NowPlayingWebsocket extends EventEmitter<EventMap> {
         if ("connect" in jsonData) {
           const connectData = jsonData.connect;
           if ("data" in connectData) {
-            connectData.data.forEach((initialRow: any) =>
-              this.handleSseData(initialRow)
-            );
+            for (const initialRow of connectData.data) {
+              this.handleSseData(initialRow);
+            }
           } else {
             for (const subName in connectData.subs) {
               const sub = connectData.subs[subName];
               if ("publications" in sub && sub.publications.length > 0) {
-                sub.publications.forEach((initialRow: any) =>
-                  this.handleSseData(initialRow, false)
-                );
+                for (const initialRow of sub.publications) {
+                  this.handleSseData(initialRow);
+                }
               }
             }
           }
         } else if ("pub" in jsonData) {
           this.handleSseData(jsonData.pub);
         }
-      } catch (err: any) {
+      } catch (err) {
         this.emit(
           "error",
           new NowPlayingWebsocketValidationError(
@@ -117,14 +117,15 @@ export class NowPlayingWebsocket extends EventEmitter<EventMap> {
       this.emit(
         "error",
         new NowPlayingWebsocketConnectionError(
-          "Websocket error: " +
-            (error instanceof Error ? error.message : String(error))
+          `Websocket error: ${
+            error instanceof Error ? error.message : String(error)
+          }`
         )
       );
     };
   }
 
-  private handleSseData(ssePayload: any, useTime = true) {
+  private handleSseData(ssePayload: { data: { np: NowPlayingPayload } }) {
     const jsonData = ssePayload.data;
     const np = jsonData.np;
     const parsed = NowPlayingPayloadSchema.safeParse(np);

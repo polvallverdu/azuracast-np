@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { z } from "zod";
 import { NowPlayingPayloadSchema, type NowPlayingPayload } from "../schema";
 
 /**
@@ -41,8 +41,10 @@ export async function getNowPlaying(
   let req: Response;
   try {
     req = await fetch(url);
-  } catch (err: any) {
-    throw new NowPlayingNetworkError(`Network error: ${err?.message || err}`);
+  } catch (err) {
+    throw new NowPlayingNetworkError(
+      `Network error: ${err instanceof Error ? err.message : err}`
+    );
   }
   if (!req.ok) {
     throw new NowPlayingNetworkError(
@@ -52,7 +54,7 @@ export async function getNowPlaying(
   let data: unknown;
   try {
     data = await req.json();
-  } catch (err: any) {
+  } catch (err) {
     throw new NowPlayingValidationError("Response was not valid JSON", []);
   }
   const parsed = NowPlayingPayloadSchema.safeParse(data);
